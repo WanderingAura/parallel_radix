@@ -2,9 +2,9 @@
 #include <iostream>
 #include <cstdint>
 #include <vector>
+#include <array>
 #include <cstring>
 #include <thread>
-#include <sys/mman.h>
 #include <cassert>
 #include <functional>
 
@@ -12,65 +12,6 @@ typedef uint64_t u64;
 typedef uint8_t u8;
 typedef uint8_t u16;
 typedef uint32_t u32;
-
-template<typename T>
-bool IsPowerOf2(T align)
-{
-    return (align & (align - 1)) == 0 && align != 0;
-}
-
-#define KB * (1024)
-#define MB * (1024 KB)
-#define GB * (1024 MB)
-
-class Arena
-{
-public:
-    Arena(u64 capacity = 1 GB) :
-        capacity{capacity},
-        pos{}
-    {
-
-    }
-
-    ~Arena()
-    {
-        munmap(data, capacity);
-    }
-
-    template<typename T>
-    void* AllocArray(u64 n)
-    {
-        u64 size = n * sizeof(T);
-        assert(size / sizeof(T) == n); // check for overflow
-        return Alloc(size, alignof(T));
-    }
-
-    void* Alloc(u64 size, u8 align)
-    {
-        if (!data)
-        {
-            data = static_cast<std::byte*>(mmap(nullptr, capacity, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
-            assert(data); // TODO: better reporting on failed reservation/allocation
-        }
-        // round to next multiple of align assuming align is a power of 2
-        assert(IsPowerOf2(align));
-        pos = (pos + align) & -align;
-
-        void* result = &data[pos];
-        pos += size;
-        // TODO: make this fail less bad when there isn't enough reserved memory
-        // e.g. chain arenas
-        assert(pos < capacity);
-        return result;
-    }
-
-private:
-    std::byte* data;
-    u64 capacity;
-    u64 pos;
-    u64 pop_stack[62];
-};
 
 struct ThreadContext
 {
