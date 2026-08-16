@@ -8,6 +8,13 @@
 #include <cassert>
 #include <functional>
 
+#ifndef NDEBUG
+#define RADDBG_MARKUP_IMPLEMENTATION
+#else
+#define RADDBUG_MARKUP_STUBS
+#endif
+#include "raddbg_markup.h"
+
 typedef uint64_t u64;
 typedef uint8_t u8;
 typedef uint8_t u16;
@@ -42,7 +49,7 @@ Range ChunkNRangeFromCount(u64 chunk_idx, u64 chunk_count, u64 total_size)
     return Range{start,end};
 }
 
-// TODO: this should be a singleton
+// TODO: consider whether this should be a singleton. this class likely breaks if there are multiple instances
 class ParallelAlgorithm
 {
 public:
@@ -55,6 +62,14 @@ public:
     template<typename Callable, typename... Args>
     static void ThreadEntry(ThreadContext ctx, Callable&& algorithm, Args&& ...args)
     {
+        raddbg_thread_id(ctx.tidx);
+        char thread_id_str[4] = {};
+        // assumes thread idx never goes above 99
+        assert(ctx.tidx < 100);
+        thread_id_str[0] = '0' + ctx.tidx / 10;
+        thread_id_str[1] = '0' + ctx.tidx % 10;
+        raddbg_thread_name(thread_id_str);
+
         tctx_ = ctx;
 
         std::invoke(std::forward<Callable>(algorithm), std::forward<Args>(args)...);
@@ -174,38 +189,31 @@ void ParallelRadixSort(std::vector<u64>& arr)
 
         ParallelAlgorithm::LaneSync();
 
-        // calculate the relative per lane offsets
-        u32 total = 0;
-        for (u32 digit = 0; digit < 256; digit++)
+        // calculate the relative offsets in parallel
+        Range digit_chunk = ParallelAlgorithm::ChunkForLane(256);
+        for (u32 digit = digit_chunk.start; digit < digit_chunk.end; digit++)
         {
-            offsets[lane_idx][digit] = total;
-            total += counts[lane_idx][digit];
+            u32 total = 0;
+            for (u32 lane = 0; lane < lane_count; lane++)
+            {
+                offsets[lane][digit] = total;
+                total += counts[lane][digit];
+            }
         }
 
         ParallelAlgorithm::LaneSync();
 
-        // combine the offsets
+        // combine the offsets (single threaded)
         if (lane_idx == 0)
         {
-            for (u32 lane = 1; lane < lane_count; lane++)
+            for (u32 digit = 1; digit < 256; digit++)
             {
-                u32 increment = offsets[lane-1][255] + counts[lane-1][255];
-                for (u32 digit = 0; digit < 256; digit++)
+                u32 increment = offsets[lane_count-1][digit-1] + counts[lane_count-1][digit-1];
+                for (u32 lane = 0; lane < lane_count; lane++)
                 {
                     offsets[lane][digit] += increment;
                 }
             }
-            // u32 digit_base = 0;
-            // for (u32 digit = 0; digit < 256; digit++)
-            // {
-            //     u32 lane_base = digit_base;
-            //     for (u32 lane = 0; lane < lane_count; lane++)
-            //     {
-            //         offsets[lane][digit] = lane_base;
-            //         lane_base += counts[lane][digit];
-            //     }
-            //     digit_base = lane_base;
-            // }
         }
 
         ParallelAlgorithm::LaneSync();
@@ -257,7 +265,7 @@ int main(void)
 {
     ParallelAlgorithm parallel;
 
-    std::vector<u64> arr = {5,6,2,1,3,8,1,3,3,2,3,4,5,5,6,9,8};
+    std::vector<u64> arr = {1, 2,3,1,1,1,2,3,3};
 
     PrintVector(arr);
 
