@@ -1,7 +1,7 @@
 // Test runner for ParallelRadixSort. Pulls in main.cpp directly (renaming its main() out of
 // the way) so this exercises the real implementation, not a copy of it.
 #define main main_unused_original_entry_point
-#include "../main.cpp"
+#include "../parallel_radix_main.cpp"
 #undef main
 
 #include "test_cases.h"
