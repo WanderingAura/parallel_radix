@@ -14,9 +14,7 @@
 // unity build cos i'm lazy
 #include "parallel_algorithm.cpp"
 
-// running timing stats (microseconds) across ParallelRadixSort calls, updated from a
-// non-zero lane since lane 0 does extra serial work every pass (offset combination,
-// back_buffer alloc/free) that would skew a thread-0 measurement.
+// running timing stats (microseconds) across ParallelRadixSort calls
 static u64 g_total_time_us = 0;
 static u64 g_min_time_us = UINT64_MAX;
 static u64 g_max_time_us = 0;
@@ -39,9 +37,6 @@ void ParallelRadixSort(std::vector<u64>& arr)
     u64 lane_start = chunk.start;
     u64 lane_end = chunk.end;
 
-    // 2d array with dimensions (lane, digit) = (thread_count, 256); recomputed fresh each
-    // byte pass below, since each pass reorders arr and a lane's fixed index range ends up
-    // holding a different set of values than it started with.
     using LaneDigitArray = std::vector<std::array<u32,256>>;
     LaneDigitArray* pcounts = nullptr;
     LaneDigitArray* poffsets = nullptr;
@@ -65,6 +60,9 @@ void ParallelRadixSort(std::vector<u64>& arr)
     {
         counts[lane_idx].fill(0);
 
+        // TODO: during the first pass we can find the max element of the array
+        // and decide how many counting sort passes we do based on that, saving
+        // us from doing unnecessary count sort passes
         for (u64 i = lane_start; i < lane_end; i++)
         {
             u8 digit = (arr[i] >> (8*byte_idx)) & 0xFF;
