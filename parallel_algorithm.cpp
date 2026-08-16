@@ -4,7 +4,8 @@
 #include <vector>
 #include <barrier>
 
-#ifndef NDEBUG
+// enable rad debugger markup in debug mode on windows
+#if !defined(NDEBUG) && defined(_WIN32)
 #define RADDBG_MARKUP_IMPLEMENTATION
 #else
 #define RADDBG_MARKUP_STUBS
