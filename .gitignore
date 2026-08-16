@@ -1,1 +1,8 @@
 .clangd
+
+*.pdb
+*.rdi
+*.exe
+*.bin
+*.ilk
+*.obj

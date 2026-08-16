@@ -6,15 +6,34 @@
 #include <fstream>
 #include <string>
 #include <stdexcept>
+#include <chrono>
+#include <cstdlib>
+#include <cstdint>
+#include <algorithm>
 
 // unity build cos i'm lazy
 #include "parallel_algorithm.cpp"
+
+// running timing stats (microseconds) across ParallelRadixSort calls, updated from a
+// non-zero lane since lane 0 does extra serial work every pass (offset combination,
+// back_buffer alloc/free) that would skew a thread-0 measurement.
+static u64 g_total_time_us = 0;
+static u64 g_min_time_us = UINT64_MAX;
+static u64 g_max_time_us = 0;
 
 void ParallelRadixSort(std::vector<u64>& arr)
 {
     u32 lane_count = ParallelAlgorithm::LaneCount();
     u32 lane_idx = ParallelAlgorithm::LaneIdx();
     u64 n = arr.size();
+
+    // fall back to lane 0 only if there's no other lane to measure from
+    u32 timing_lane = (lane_count > 1) ? 1 : 0;
+    std::chrono::steady_clock::time_point timing_start;
+    if (lane_idx == timing_lane)
+    {
+        timing_start = std::chrono::steady_clock::now();
+    }
 
     Range chunk = ParallelAlgorithm::ChunkForLane(n);
     u64 lane_start = chunk.start;
@@ -100,6 +119,16 @@ void ParallelRadixSort(std::vector<u64>& arr)
         ParallelAlgorithm::LaneSync();
     }
 
+    if (lane_idx == timing_lane)
+    {
+        auto timing_end = std::chrono::steady_clock::now();
+        u64 elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(timing_end - timing_start).count();
+
+        g_total_time_us += elapsed_us;
+        g_min_time_us = std::min(g_min_time_us, elapsed_us);
+        g_max_time_us = std::max(g_max_time_us, elapsed_us);
+    }
+
     if (lane_idx == 0)
     {
         delete pcounts;
@@ -151,17 +180,37 @@ void PrintVector(const std::vector<T>& v, std::ostream& os = std::cout) {
     os << v << "\n";
 }
 
-int main(void)
+int main(int argc, char** argv)
 {
+    if (argc < 2)
+    {
+        std::cerr << "usage: " << argv[0] << " <num_runs>\n";
+        return 1;
+    }
+
+    int n_runs = std::atoi(argv[1]);
+    if (n_runs <= 0)
+    {
+        std::cerr << "num_runs must be a positive integer\n";
+        return 1;
+    }
+
     ParallelAlgorithm parallel;
 
-    std::vector<u64> arr = ReadU64VectorFromFile("data.bin");
+    std::vector<u64> original = ReadU64VectorFromFile("data.bin");
+    std::cout << "loaded " << original.size() << " elements\n";
 
-    PrintVector(arr);
+    for (int run = 0; run < n_runs; run++)
+    {
+        std::vector<u64> arr = original;
+        parallel.Execute(ParallelRadixSort, arr);
+    }
 
-    parallel.Execute(ParallelRadixSort, arr);
+    std::cout << n_runs << " runs -- total: " << (g_total_time_us / 1000.0) << " ms"
+               << ", avg: " << (g_total_time_us / 1000.0 / n_runs) << " ms"
+               << ", min: " << (g_min_time_us / 1000.0) << " ms"
+               << ", max: " << (g_max_time_us / 1000.0) << " ms\n";
 
-    PrintVector(arr);
     return 0;
 }
 
