@@ -7,7 +7,7 @@
 #ifndef NDEBUG
 #define RADDBG_MARKUP_IMPLEMENTATION
 #else
-#define RADDBUG_MARKUP_STUBS
+#define RADDBG_MARKUP_STUBS
 #endif
 #include "raddbg_markup.h"
 
