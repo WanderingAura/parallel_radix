@@ -7,6 +7,9 @@
 #include <thread>
 #include <cassert>
 #include <functional>
+#include <fstream>
+#include <string>
+#include <stdexcept>
 
 #ifndef NDEBUG
 #define RADDBG_MARKUP_IMPLEMENTATION
@@ -243,6 +246,31 @@ void ParallelRadixSort(std::vector<u64>& arr)
     }
 }
 
+// reads a binary file of little-endian u64 values (as written by gen_u64_array.py) into a vector
+std::vector<u64> ReadU64VectorFromFile(const std::string& path)
+{
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file)
+    {
+        throw std::runtime_error("failed to open file: " + path);
+    }
+
+    std::streamsize size = file.tellg();
+    if (size < 0 || size % sizeof(u64) != 0)
+    {
+        throw std::runtime_error("file size is not a multiple of sizeof(u64): " + path);
+    }
+    file.seekg(0, std::ios::beg);
+
+    std::vector<u64> result(static_cast<size_t>(size) / sizeof(u64));
+    if (!result.empty() && !file.read(reinterpret_cast<char*>(result.data()), size))
+    {
+        throw std::runtime_error("failed to read file: " + path);
+    }
+
+    return result;
+}
+
 template <typename T>
 std::ostream& operator<<(std::ostream& os, const std::vector<T>& v) {
     os << "[";
@@ -265,7 +293,7 @@ int main(void)
 {
     ParallelAlgorithm parallel;
 
-    std::vector<u64> arr = {1, 2,3,1,1,1,2,3,3};
+    std::vector<u64> arr = ReadU64VectorFromFile("data.bin");
 
     PrintVector(arr);
 
